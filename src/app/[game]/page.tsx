@@ -1,4 +1,3 @@
-// src/app/[game]/page.tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -33,7 +32,7 @@ export default function GamePage({ params }: GamePageProps) {
   const [score, setScore] = useState<number>(0);
   const [players, setPlayers] = useState<PlayerBet[]>([]);
   const [pot, setPot] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours
+  const [timeLeft, setTimeLeft] = useState<number>(2 * 60 * 60);
   const [resetKey, setResetKey] = useState<number>(0);
   const [gameId, setGameId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +88,7 @@ export default function GamePage({ params }: GamePageProps) {
       const timeout = setTimeout(() => {
         console.log('Redirecting to home page after game over');
         router.push('/');
-      }, 2000); // 2-second delay for user to see final score
+      }, 2000);
       return () => {
         console.log('Cleaning up redirect timeout');
         clearTimeout(timeout);
@@ -172,7 +171,7 @@ export default function GamePage({ params }: GamePageProps) {
           const result = await response.json();
           if (result.updated) {
             console.log(`Score updated from ${result.previousScore} to ${result.newScore}`);
-            await fetchPotAndPlayers(); // Refresh leaderboard only if score updated
+            await fetchPotAndPlayers();
           } else {
             console.log(`Score not updated: ${newScore} <= ${result.previousScore}`);
           }
@@ -221,19 +220,42 @@ export default function GamePage({ params }: GamePageProps) {
       <h1 className="text-4xl md:text-5xl font-bold text-[#00ff00] drop-shadow-[0_0_10px_#00ff00] mb-6">
         {gameName.replace('-', ' ').toUpperCase()}
       </h1>
-      {betPlaced && (
-        <>
-          <div className="text-white text-xl mb-4">Pot: {pot / solanaWeb3.LAMPORTS_PER_SOL} SOL</div>
-          <div className="text-white text-xl mb-4">Score: {score}</div>
-        </>
-      )}
-      {!betPlaced && (
-        <div className="text-white text-xl mb-4">Practice Mode - Score: {score}</div>
-      )}
-      <CubeRush onGameOver={handleGameOver} onScoreUpdate={handleScoreUpdate} key={resetKey} />
-      {betPlaced && <Leaderboard players={players} pot={pot} timeLeft={timeLeft} />}
+      <div className="w-full max-w-7xl flex flex-col md:flex-row gap-4">
+        {/* Game Area */}
+        <div className="flex-1 md:w-2/3">
+          {betPlaced && (
+            <div className="text-white text-xl mb-4">
+              Pot: {pot / solanaWeb3.LAMPORTS_PER_SOL} SOL | Score: {score}
+            </div>
+          )}
+          {!betPlaced && (
+            <div className="text-white text-xl mb-4">Practice Mode - Score: {score}</div>
+          )}
+          <div className="game-container">
+            <CubeRush onGameOver={handleGameOver} onScoreUpdate={handleScoreUpdate} key={resetKey} />
+          </div>
+        </div>
+
+        {/* Leaderboard */}
+        {betPlaced && (
+          <div className="md:w-1/3">
+            <Leaderboard players={players} pot={pot} timeLeft={timeLeft} />
+          </div>
+        )}
+      </div>
+
+      {/* Comments Section */}
+      <div className="w-full max-w-7xl mt-8">
+        <div className="bg-[#333] p-4 rounded-lg text-white">
+          <h2 className="text-2xl font-bold text-[#00ff00] mb-4">Comments</h2>
+          <p className="text-gray-400">Comments section coming soon...</p>
+          {/* Add comment form or list here later */}
+        </div>
+      </div>
+
+      {/* Game Over Overlay */}
       {gameOver && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
           <div className="bg-[#333] p-8 rounded-lg text-white text-center shadow-[0_0_20px_rgba(0,255,0,0.5)]">
             <h2 className="text-3xl text-red-500 mb-4">Game Over!</h2>
             <p className="text-xl mb-6">Final Score: {finalScore}</p>

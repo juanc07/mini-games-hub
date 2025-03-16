@@ -12,9 +12,15 @@ export function startBackgroundMusic(audioContext: AudioContext): () => void {
 
   let currentTime = audioContext.currentTime;
   let timeoutId: NodeJS.Timeout | null = null;
-  const oscillators: OscillatorNode[] = []; // Track oscillators to stop them
+  const oscillators: OscillatorNode[] = [];
+  let isPlaying = true; // Flag to control playback loop
 
   const playNote = () => {
+    if (!isPlaying || audioContext.state === 'closed') {
+      console.log('Stopping playNote: AudioContext closed or playback stopped');
+      return;
+    }
+
     melody.forEach(note => {
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -30,7 +36,7 @@ export function startBackgroundMusic(audioContext: AudioContext): () => void {
       oscillator.start(currentTime);
       oscillator.stop(currentTime + note.duration);
 
-      oscillators.push(oscillator); // Store for cleanup
+      oscillators.push(oscillator);
       currentTime += note.duration;
     });
 
@@ -38,22 +44,36 @@ export function startBackgroundMusic(audioContext: AudioContext): () => void {
     timeoutId = setTimeout(playNote, durationMs);
   };
 
+  // Start playback
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(err => console.error('Failed to resume AudioContext:', err));
+  }
   playNote();
 
   // Cleanup function
   return () => {
+    console.log('Cleaning up background music');
+    isPlaying = false; // Stop the loop
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
+      timeoutId = null;
     }
     oscillators.forEach(osc => {
-      osc.stop();
-      osc.disconnect();
+      if (audioContext.state !== 'closed') {
+        osc.stop();
+        osc.disconnect();
+      }
     });
-    oscillators.length = 0; // Clear array
+    oscillators.length = 0;
   };
 }
 
 export function playCollectionSound(audioContext: AudioContext): void {
+  if (audioContext.state === 'closed') {
+    console.log('Skipping playCollectionSound: AudioContext closed');
+    return;
+  }
+
   const oscillator = audioContext.createOscillator();
   const gainNode = audioContext.createGain();
   oscillator.connect(gainNode);
@@ -72,6 +92,11 @@ export function playCollectionSound(audioContext: AudioContext): void {
 }
 
 export function playCrashSound(audioContext: AudioContext): void {
+  if (audioContext.state === 'closed') {
+    console.log('Skipping playCrashSound: AudioContext closed');
+    return;
+  }
+
   const noise = audioContext.createBufferSource();
   const bufferSize = audioContext.sampleRate * 0.5;
   const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);

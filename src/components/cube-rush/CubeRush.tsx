@@ -11,8 +11,8 @@ import { startBackgroundMusic } from '../../lib/cube-rush/audio';
 import { GameState } from '../../lib/cube-rush/types';
 
 interface CubeRushProps {
-  onGameOver: (score: number) => Promise<void>; // Match GamePage's async signature
-  onScoreUpdate: (score: number) => Promise<void>; // Match GamePage's async signature
+  onGameOver: (score: number) => Promise<void>;
+  onScoreUpdate: (score: number) => Promise<void>;
 }
 
 const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
@@ -30,13 +30,25 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
       CONFIG.cameraFov,
-      window.innerWidth / window.innerHeight,
+      1, // Aspect ratio will be updated dynamically
       CONFIG.cameraNear,
       CONFIG.cameraFar
     );
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Set initial size based on container
+    const updateRendererSize = () => {
+      if (mountRef.current) {
+        const width = mountRef.current.clientWidth;
+        const height = mountRef.current.clientHeight;
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+    };
+
     mountRef.current.appendChild(renderer.domElement);
+    updateRendererSize(); // Initial sizing
 
     scene.background = new THREE.Color(0x000000);
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -49,10 +61,13 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
     const track = createTrack(scene);
     const dustParticles = createSpaceBackground(scene, CONFIG.initialSpeed);
 
-    let audioContext: AudioContext;
+    let audioContext: AudioContext | undefined;
+    let stopMusic: (() => void) | undefined;
+    let gameOverSent = false;
+
     try {
       audioContext = new AudioContext();
-      startBackgroundMusic(audioContext);
+      stopMusic = startBackgroundMusic(audioContext);
     } catch (e) {
       console.error('AudioContext initialization failed:', e);
       return;
@@ -126,7 +141,9 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
       if (Math.random() < CONFIG.obstacleSpawnChance) spawnObstacle(scene, game.obstacles);
 
       onScoreUpdate(game.score);
-      if (game.gameOverTriggered) {
+      if (game.gameOverTriggered && !gameOverSent) {
+        gameOverSent = true;
+        console.log('Triggering onGameOver with score:', game.score);
         onGameOver(game.score);
       }
 
@@ -135,22 +152,34 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
 
     animate();
 
+    // Handle window resize
+    const handleResize = () => {
+      updateRendererSize();
+    };
+    window.addEventListener('resize', handleResize);
+
     return () => {
+      console.log('Cleaning up CubeRush');
       if (animationFrameId.current !== null) {
         cancelAnimationFrame(animationFrameId.current);
       }
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', handleResize);
       if (mountRef.current && renderer.domElement) {
         mountRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
       scene.children.forEach(child => scene.remove(child));
-      audioContext.close().catch(err => console.error('Failed to close AudioContext:', err));
+      if (stopMusic) {
+        stopMusic();
+      }
+      if (audioContext) {
+        audioContext.close().catch(err => console.error('Failed to close AudioContext:', err));
+      }
     };
   }, [onGameOver, onScoreUpdate]);
 
-  return <div ref={mountRef} style={{ width: '100%', height: '100vh', position: 'relative' }} />;
+  return <div ref={mountRef} className="game-canvas" />;
 };
-
 export default CubeRush;
