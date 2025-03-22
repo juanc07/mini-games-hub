@@ -1,12 +1,24 @@
 import * as solanaWeb3 from '@solana/web3.js';
 import { PublicKey, Keypair } from '@solana/web3.js';
 import connectDB from './mongodb';
-import bs58 from 'bs58'; // Add this dependency
+import bs58 from 'bs58';
 
+// Initialize connection
 const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
 
-// REPLACE WITH ADMIN_WALLET FROM .ENV FILE ADMIN_WALLET
-const developerWallet = 'HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS';
+// Load and validate TAX_COLLECTION_WALLET from .env
+const developerWalletRaw = process.env.TAX_COLLECTION_WALLET;
+if (!developerWalletRaw) {
+  throw new Error('TAX_COLLECTION_WALLET is not defined in .env');
+}
+
+// Convert to PublicKey at startup with validation
+let developerWallet: PublicKey;
+try {
+  developerWallet = new PublicKey(developerWalletRaw);
+} catch (error) {
+  throw new Error(`Invalid TAX_COLLECTION_WALLET public key: ${developerWalletRaw}`);
+}
 
 export interface PlayerBet {
   player: PublicKey;
@@ -104,13 +116,13 @@ export async function distributeWinnings(gameId: string): Promise<void> {
   const game = await Game.findOne({ gameId });
   if (!game || game.currentPot <= 0 || game.activePlayers.length === 0) return;
 
-  const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey)); // Changed to decode string
+  const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey));
   const totalPot = game.currentPot;
   const serviceFeePercentage = game.taxPercentage || 10;
   const fee = totalPot * (serviceFeePercentage / 100);
   const winnings = totalPot - fee;
 
-  const serviceWallet = new PublicKey(developerWallet);
+  const serviceWallet = developerWallet; // Now a PublicKey
   const scores = await Score.find({ gameId, cycleEnd: null });
   if (scores.length === 0) return;
 
@@ -235,49 +247,39 @@ export async function sendPotToDeveloper(gameId: string): Promise<void> {
   const Game = (await import('../models/Game')).default;
 
   try {
-    // Fetch the game
     const game = await Game.findOne({ gameId });
     if (!game) throw new Error(`Game ${gameId} not found`);
     if (game.currentPot <= 0) throw new Error(`Game ${gameId} has no funds in the pot`);
 
-    // Reconstruct the game pot keypair from the stored secret key (now a string)
-    const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey)); // Changed to decode string
-
-    // Verify the public key matches (for safety)
+    const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey));
     if (gamePotKeypair.publicKey.toBase58() !== game.gamePotPublicKey) {
       throw new Error(`Public key mismatch for game ${gameId}`);
     }
 
-    // Get the actual balance of the game pot wallet
     const balance = await connection.getBalance(gamePotKeypair.publicKey);
     if (balance <= 0) throw new Error(`Game pot wallet has no funds`);
 
-    // Estimate the transaction fee (assume 5000 lamports for a simple transfer)
-    const FEE_ESTIMATE = 5000; // Adjust based on actual fee if needed
+    const FEE_ESTIMATE = 5000;
     const transferableAmount = Math.max(0, balance - FEE_ESTIMATE);
 
     if (transferableAmount <= 0) {
       throw new Error(`Insufficient funds after accounting for fees: ${balance} lamports available`);
     }
 
-    // Get the latest blockhash
+    const developerPubkey = developerWallet; // Now a PublicKey
     const { blockhash } = await connection.getLatestBlockhash();
 
-    // Create a transaction to transfer the available amount to the developer wallet
-    const developerPubkey = new PublicKey(developerWallet);
     const transferTx = new solanaWeb3.Transaction().add(
       solanaWeb3.SystemProgram.transfer({
         fromPubkey: gamePotKeypair.publicKey,
         toPubkey: developerPubkey,
-        lamports: transferableAmount, // Transfer only what’s available minus fee
+        lamports: transferableAmount,
       })
     );
 
-    // Set the blockhash and fee payer
     transferTx.recentBlockhash = blockhash;
     transferTx.feePayer = gamePotKeypair.publicKey;
 
-    // Sign and send the transaction
     const signature = await solanaWeb3.sendAndConfirmTransaction(
       connection,
       transferTx,
@@ -285,7 +287,6 @@ export async function sendPotToDeveloper(gameId: string): Promise<void> {
     );
     console.log(`Transferred ${transferableAmount} lamports from game ${gameId} to developer wallet. Signature: ${signature}`);
 
-    // Update the game to reflect the pot being emptied
     await Game.updateOne(
       { gameId },
       { $set: { currentPot: 0 } }

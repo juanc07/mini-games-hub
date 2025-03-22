@@ -12,13 +12,15 @@ export interface WalletContextType {
 
 export const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
+const ADMIN_PUBLIC_KEY = process.env.NEXT_PUBLIC_ADMIN_WALLET;
+if (!ADMIN_PUBLIC_KEY) {
+  throw new Error('NEXT_PUBLIC_ADMIN_WALLET is not defined in .env');
+}
+
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [walletConnected, setWalletConnected] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [wallet, setWallet] = useState<solanaWeb3.PublicKey | null>(null);
-
-  // REPLACE WITH ADMIN_WALLET FROM .ENV FILE ADMIN_WALLET
-  const ADMIN_PUBLIC_KEY = 'HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS';
 
   const connectWallet = async () => {
     const solana = window.solana;
