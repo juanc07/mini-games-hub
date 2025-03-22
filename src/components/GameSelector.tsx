@@ -1,4 +1,3 @@
-// src/components/GameSelector.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -142,38 +141,42 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
           disabled={serverStatus === false}
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-        {games.map((game) => (
-          <div key={game.gameId} className="relative">
-            <Button
-              onClick={() => toggleGameOptions(game.gameId)}
-              className="w-full h-56 bg-[#00ff00] text-black hover:bg-[#00cc00] hover:shadow-[0_0_20px_#00ff00,0_0_40px_#00ff00] transition-all duration-300 transform hover:scale-105 border-4 border-[#00ff00] text-2xl font-bold uppercase"
-              disabled={bettingGameId === game.gameId}
-            >
-              {bettingGameId === game.gameId
-                ? 'Placing Bet...'
-                : game.gameName.replace('-', ' ')}
-            </Button>
-            {selectedGame === game.gameId && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border-2 border-[#00ff00] rounded-lg p-2 z-10 shadow-lg">
-                <Button
-                  onClick={() => handlePlayWithoutBet(game)}
-                  className="w-full mb-2 bg-gray-500 text-white hover:bg-gray-600 text-lg py-2"
-                >
-                  Play Without Bet
-                </Button>
-                <Button
-                  onClick={() => handlePlaceBet(game)}
-                  className="w-full bg-[#00ff00] text-black hover:bg-[#00cc00] disabled:opacity-50 text-lg py-2"
-                  disabled={serverStatus === false || bettingGameId === game.gameId}
-                >
-                  {serverStatus === false ? 'Server Offline' : 'Place Bet'}
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {games.length === 0 ? (
+        <p className="text-white text-center text-xl">No games available</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+          {games.map((game) => (
+            <div key={game.gameId} className="relative">
+              <Button
+                onClick={() => toggleGameOptions(game.gameId)}
+                className="w-full h-56 bg-[#00ff00] text-black hover:bg-[#00cc00] hover:shadow-[0_0_20px_#00ff00,0_0_40px_#00ff00] transition-all duration-300 transform hover:scale-105 border-4 border-[#00ff00] text-2xl font-bold uppercase"
+                disabled={bettingGameId === game.gameId}
+              >
+                {bettingGameId === game.gameId
+                  ? 'Placing Bet...'
+                  : game.gameName.replace('-', ' ')}
+              </Button>
+              {selectedGame === game.gameId && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border-2 border-[#00ff00] rounded-lg p-2 z-10 shadow-lg">
+                  <Button
+                    onClick={() => handlePlayWithoutBet(game)}
+                    className="w-full mb-2 bg-gray-500 text-white hover:bg-gray-600 text-lg py-2"
+                  >
+                    Play Without Bet
+                  </Button>
+                  <Button
+                    onClick={() => handlePlaceBet(game)}
+                    className="w-full bg-[#00ff00] text-black hover:bg-[#00cc00] disabled:opacity-50 text-lg py-2"
+                    disabled={serverStatus === false || bettingGameId === game.gameId}
+                  >
+                    {serverStatus === false ? 'Server Offline' : 'Place Bet'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

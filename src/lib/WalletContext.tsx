@@ -17,6 +17,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [wallet, setWallet] = useState<solanaWeb3.PublicKey | null>(null);
 
+  // REPLACE WITH ADMIN_WALLET FROM .ENV FILE ADMIN_WALLET
   const ADMIN_PUBLIC_KEY = 'HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS';
 
   const connectWallet = async () => {

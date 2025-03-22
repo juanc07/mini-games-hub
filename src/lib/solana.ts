@@ -4,6 +4,8 @@ import connectDB from './mongodb';
 import bs58 from 'bs58'; // Add this dependency
 
 const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+
+// REPLACE WITH ADMIN_WALLET FROM .ENV FILE ADMIN_WALLET
 const developerWallet = 'HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS';
 
 export interface PlayerBet {

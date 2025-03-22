@@ -1,4 +1,3 @@
-// src/app/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -84,9 +83,9 @@ export default function Home() {
         <div className="w-full flex flex-col items-center gap-12">
           <GameSelector serverStatus={serverStatus} />
           {isAdmin && (
-            <Link href="/admin/games" passHref>
+            <Link href="/admin/dashboard" passHref>
               <Button className="bg-[#00ff00] text-black hover:bg-[#00cc00] hover:shadow-[0_0_15px_#00ff00] text-2xl font-bold py-4 px-8 rounded-lg border-4 border-[#00ff00] transition-all duration-300">
-                Admin: Create New Game
+                Admin Dashboard
               </Button>
             </Link>
           )}

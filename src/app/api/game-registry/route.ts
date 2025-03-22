@@ -6,13 +6,22 @@ import bs58 from 'bs58';
 export async function GET(req: NextRequest) {
   await connectDB();
   const Game = (await import('../../../models/Game')).default;
-  const games = await Game.find();
+  const { searchParams } = new URL(req.url);
+  const gameId = searchParams.get('gameId');
 
-  // Log the secret key for each game (now stored as a base58-encoded string)
+  if (gameId) {
+    const game = await Game.findOne({ gameId });
+    if (!game) {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    }
+    return NextResponse.json(game);
+  }
+
+  const games = await Game.find();
+  // Uncomment if you want to log secret keys (security note: avoid in production)
   /*games.forEach((game) => {
     console.log(`Game ${game.gameId} - Secret Key: ${game.gamePotSecretKey}`);
   });*/
-
   return NextResponse.json(games);
 }
 
@@ -26,8 +35,8 @@ export async function POST(req: NextRequest) {
     gameId,
     gameName,
     gamePotPublicKey: gamePotKeypair.publicKey.toBase58(),
-    gamePotSecretKey: bs58.encode(gamePotKeypair.secretKey), // Store as base58 string
-    taxPercentage: taxPercentage || 10, // Default to 10%
+    gamePotSecretKey: bs58.encode(gamePotKeypair.secretKey),
+    taxPercentage: taxPercentage || 10,
     currentPot: 0,
     totalTaxCollected: 0,
     playerCount: 0,
@@ -54,7 +63,9 @@ export async function PUT(req: NextRequest) {
     { $set: updateData },
     { new: true }
   );
-  if (!updatedGame) throw new Error(`Game ${gameId} not found`);
+  if (!updatedGame) {
+    return NextResponse.json({ error: `Game ${gameId} not found` }, { status: 404 });
+  }
   return NextResponse.json(updatedGame);
 }
 
@@ -64,6 +75,8 @@ export async function DELETE(req: NextRequest) {
   const { gameId } = await req.json();
 
   const deletedGame = await Game.findOneAndDelete({ gameId });
-  if (!deletedGame) throw new Error(`Game ${gameId} not found`);
+  if (!deletedGame) {
+    return NextResponse.json({ error: `Game ${gameId} not found` }, { status: 404 });
+  }
   return NextResponse.json({ success: true });
 }
