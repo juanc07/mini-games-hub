@@ -14,9 +14,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import * as solanaWeb3 from "@solana/web3.js";
+
+interface Game {
+  gameId: string;
+  gameName: string;
+  taxPercentage: number;
+  cycleEndTime: string;
+}
+
+interface GameStatus {
+  gameId: string;
+  gameName: string;
+  timeLeft: number;
+  cycleActive: boolean;
+  currentPot: number; // In lamports
+}
 
 export default function AdminDashboard() {
-  const [games, setGames] = useState<any[]>([]);
+  const [games, setGames] = useState<(Game & { currentPot: number })[]>([]);
   const [fetchingGames, setFetchingGames] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -24,19 +40,33 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    async function fetchGames() {
+    async function fetchGamesAndStatuses() {
       try {
-        const res = await fetch("http://localhost:3000/api/game-registry");
-        if (!res.ok) throw new Error(res.statusText);
-        const data = await res.json();
-        setGames(data);
+        const registryRes = await fetch("http://localhost:3000/api/game-registry");
+        if (!registryRes.ok) throw new Error(registryRes.statusText);
+        const registryData: Game[] = await registryRes.json();
+
+        const statusRes = await fetch("http://localhost:3000/api/game-status");
+        if (!statusRes.ok) throw new Error(statusRes.statusText);
+        const statusData: GameStatus[] = await statusRes.json();
+
+        const mergedGames = registryData.map((game) => {
+          const status = statusData.find((s) => s.gameId === game.gameId);
+          return {
+            ...game,
+            currentPot: status ? status.currentPot : 0,
+          };
+        });
+
+        setGames(mergedGames);
       } catch (err) {
         setError("Error loading games");
+        console.error("Fetch error:", err);
       } finally {
         setFetchingGames(false);
       }
     }
-    fetchGames();
+    fetchGamesAndStatuses();
   }, []);
 
   async function handleDelete() {
@@ -69,7 +99,25 @@ export default function AdminDashboard() {
   }
 
   function handleBack() {
-    router.push("/"); // Navigate back to home page
+    router.push("/");
+  }
+
+  if (fetchingGames) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <Card className="bg-[#222] border-[#333] shadow-[0_0_15px_rgba(0,255,0,0.2)] w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-xl text-[#00ff00] text-center">Loading Dashboard</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-center">
+              <div className="w-12 h-12 border-4 border-t-[#00ff00] border-[#333] rounded-full animate-spin"></div>
+            </div>
+            <p className="text-white text-center text-sm animate-pulse">Fetching game data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -99,9 +147,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-xl text-white">Games</CardTitle>
           </CardHeader>
           <CardContent>
-            {fetchingGames ? (
-              <p className="text-white">Loading games...</p>
-            ) : error ? (
+            {error ? (
               <p className="text-red-500">{error}</p>
             ) : (
               <Table>
@@ -110,6 +156,7 @@ export default function AdminDashboard() {
                     <TableHead className="text-white">Game Name</TableHead>
                     <TableHead className="text-white">Game ID</TableHead>
                     <TableHead className="text-white">Tax Percentage</TableHead>
+                    <TableHead className="text-white">Current Pot (SOL)</TableHead>
                     <TableHead className="text-white">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -119,6 +166,9 @@ export default function AdminDashboard() {
                       <TableCell className="text-white">{game.gameName}</TableCell>
                       <TableCell className="text-white">{game.gameId}</TableCell>
                       <TableCell className="text-white">{game.taxPercentage}%</TableCell>
+                      <TableCell className="text-white">
+                        {(game.currentPot / solanaWeb3.LAMPORTS_PER_SOL).toFixed(3)}
+                      </TableCell>
                       <TableCell className="text-white">
                         <Button
                           onClick={() => router.push(`/admin/games/${game.gameId}`)}

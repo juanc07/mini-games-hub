@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 
 export default function EditGamePage() {
   const [game, setGame] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -25,6 +25,8 @@ export default function EditGamePage() {
         setGame(data);
       } catch (err) {
         setError("Error loading game");
+      } finally {
+        setLoading(false);
       }
     }
     if (gameId) fetchGame();
@@ -107,8 +109,44 @@ export default function EditGamePage() {
     }
   }
 
-  if (!game && !error) return <p className="text-white">Loading...</p>;
-  if (error && !game) return <p className="text-red-500">{error}</p>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <Card className="bg-[#222] border-[#333] shadow-[0_0_15px_rgba(0,255,0,0.2)] w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-xl text-[#00ff00] text-center">Loading Game</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-center">
+              <div className="w-12 h-12 border-4 border-t-[#00ff00] border-[#333] rounded-full animate-spin"></div>
+            </div>
+            <p className="text-white text-center text-sm">Fetching game data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error && !game) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center">
+        <Card className="bg-[#222] border-[#333] shadow-[0_0_15px_rgba(0,255,0,0.2)] w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-xl text-red-500 text-center">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-500 text-center">{error}</p>
+            <Button
+              onClick={() => router.push("/admin/dashboard")}
+              className="mt-4 w-full bg-[#333] text-[#00ff00] hover:bg-[#444]"
+            >
+              Back to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] p-4 md:p-8 flex flex-col items-center">
@@ -144,7 +182,7 @@ export default function EditGamePage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-white">Current Pot</Label>
-                <p className="text-white">{game.currentPot} SOL</p>
+                <p className="text-white">{(game.currentPot / 1e9).toFixed(3)} SOL</p>
               </div>
               <div className="flex justify-between">
                 <Button
