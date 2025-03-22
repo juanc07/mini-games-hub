@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import * as solanaWeb3 from '@solana/web3.js';
 import Leaderboard from '../../components/Leaderboard';
 import { useWallet } from '../../lib/WalletContext';
+import {GameSchema} from '../../models/Game';
+import {ScoreSchema} from '../../models/Score';
+
 
 const CubeRush = dynamic(() => import('../../components/cube-rush/CubeRush'), { ssr: false });
 
@@ -44,7 +47,7 @@ export default function GamePage({ params }: GamePageProps) {
         const res = await fetch('/api/game-registry');
         if (!res.ok) throw new Error('Failed to fetch game registry');
         const games = await res.json();
-        const game = games.find((g: any) => g.gameName === gameName);
+        const game = games.find((g: GameSchema) => g.gameName === gameName);
         if (!game) {
           setError('Game not found in registry');
           console.error('Game not found in registry:', gameName);
@@ -109,7 +112,7 @@ export default function GamePage({ params }: GamePageProps) {
 
       const gameRes = await fetch('/api/game-registry');
       const games = await gameRes.json();
-      const gameData = games.find((g: any) => g.gameId === gameId);
+      const gameData = games.find((g: GameSchema) => g.gameId === gameId);
 
       if (gameData) {
         const playerMap = new Map<string, number>();
@@ -120,7 +123,7 @@ export default function GamePage({ params }: GamePageProps) {
         });
         const scores = await scoresRes.json();
         if (Array.isArray(scores)) {
-          scores.forEach((s: any) => {
+          scores.forEach((s: ScoreSchema) => {
             if (s.userId && typeof s.score === 'number') {
               playerMap.set(s.userId, s.score);
             }

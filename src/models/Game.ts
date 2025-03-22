@@ -1,11 +1,25 @@
-// src/models/Game.ts
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const GameSchema = new Schema({
+export interface IGame extends Document {
+  gameId: string;
+  gameName: string;
+  gamePotPublicKey: string;
+  gamePotSecretKey: string; // Changed to string
+  taxPercentage: number;
+  currentPot: number;
+  totalTaxCollected: number;
+  playerCount: number;
+  activePlayers: Array<{
+    userId: string;
+  }>;
+  lastDistribution: Date;
+}
+
+const GameSchema = new Schema<IGame>({
   gameId: { type: String, required: true, unique: true },
   gameName: { type: String, required: true },
   gamePotPublicKey: { type: String, required: true },
-  gamePotSecretKey: { type: [Number], required: true },
+  gamePotSecretKey: { type: String, required: true }, // Changed to String
   taxPercentage: { type: Number, default: 10 },
   currentPot: { type: Number, default: 0 },
   totalTaxCollected: { type: Number, default: 0 },
@@ -17,4 +31,6 @@ const GameSchema = new Schema({
   lastDistribution: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.Game || mongoose.model('Game', GameSchema);
+const Game = mongoose.models.Game || mongoose.model<IGame>('Game', GameSchema);
+export type { IGame as GameSchema };
+export default Game;

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as solanaWeb3 from '@solana/web3.js';
 import connectDB from '../../../lib/mongodb';
+import bs58 from 'bs58';
 
 export async function GET(req: NextRequest) {
   await connectDB();
   const Game = (await import('../../../models/Game')).default;
   const games = await Game.find();
+
+  // Log the secret key for each game (now stored as a base58-encoded string)
+  /*games.forEach((game) => {
+    console.log(`Game ${game.gameId} - Secret Key: ${game.gamePotSecretKey}`);
+  });*/
+
   return NextResponse.json(games);
 }
 
@@ -19,7 +26,7 @@ export async function POST(req: NextRequest) {
     gameId,
     gameName,
     gamePotPublicKey: gamePotKeypair.publicKey.toBase58(),
-    gamePotSecretKey: Array.from(gamePotKeypair.secretKey),
+    gamePotSecretKey: bs58.encode(gamePotKeypair.secretKey), // Store as base58 string
     taxPercentage: taxPercentage || 10, // Default to 10%
     currentPot: 0,
     totalTaxCollected: 0,

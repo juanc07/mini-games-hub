@@ -1,11 +1,19 @@
-// src/models/Score.ts
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-const ScoreSchema = new Schema({
+export interface IScore extends Document {
+  gameId: string;
+  userId: string;
+  score: number;
+  cycleEnd: Date | null;
+}
+
+const ScoreSchema = new Schema<IScore>({
   gameId: { type: String, required: true },
   userId: { type: String, required: true },
   score: { type: Number, required: true },
   cycleEnd: { type: Date, default: null }, // Optional, null for active scores
 });
 
-export default mongoose.models.Score || mongoose.model('Score', ScoreSchema);
+const Score = mongoose.models.Score || mongoose.model<IScore>('Score', ScoreSchema);
+export type { IScore as ScoreSchema };
+export default Score;

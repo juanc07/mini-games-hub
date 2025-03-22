@@ -1,3 +1,4 @@
+// src/app/admin/games/page.tsx
 'use server';
 
 import { redirect } from 'next/navigation';
@@ -5,14 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default async function AdminGamesPage() {
   async function createGame(formData: FormData) {
@@ -30,12 +24,16 @@ export default async function AdminGamesPage() {
     if (res.ok) {
       redirect('/admin/games');
     } else {
-      console.error('Failed to create game');
+      const errorData = await res.json();
+      console.error('Failed to create game:', errorData.error || res.statusText);
       throw new Error('Failed to create game');
     }
   }
 
   const gamesRes = await fetch('http://localhost:3000/api/game-registry');
+  if (!gamesRes.ok) {
+    return <div>Error loading games: {gamesRes.statusText}</div>;
+  }
   const games = await gamesRes.json();
 
   return (

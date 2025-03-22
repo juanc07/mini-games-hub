@@ -1,9 +1,10 @@
-// src/lib/solana.ts
 import * as solanaWeb3 from '@solana/web3.js';
 import { PublicKey, Keypair } from '@solana/web3.js';
 import connectDB from './mongodb';
+import bs58 from 'bs58'; // Add this dependency
 
 const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+const developerWallet = 'HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS';
 
 export interface PlayerBet {
   player: PublicKey;
@@ -48,12 +49,10 @@ export async function createBetTransaction(
     return transaction.serialize({ requireAllSignatures: false }).toString('base64');
   } catch (error: any) {
     console.error('Error in createBetTransaction:', error);
-    throw error; // Re-throw for API to handle
+    throw error;
   }
 }
 
-// Rest of the file remains unchanged
-// src/lib/solana.ts (partial update)
 export async function confirmBet(
   publicKey: string,
   amountSol: number,
@@ -73,7 +72,6 @@ export async function confirmBet(
 
   const isNewPlayer = !game.activePlayers.some((player: { userId: string }) => player.userId === userId);
 
-  // Update game: increment pot, add player only if new
   await Game.updateOne(
     { gameId },
     {
@@ -82,12 +80,11 @@ export async function confirmBet(
         playerCount: isNewPlayer ? 1 : 0 
       },
       $addToSet: { 
-        activePlayers: { userId } // This should work with proper schema
+        activePlayers: { userId }
       }
     }
   );
 
-  // Update player total bets
   await Player.updateOne(
     { userId },
     { $inc: { totalBets: lamports } },
@@ -105,13 +102,13 @@ export async function distributeWinnings(gameId: string): Promise<void> {
   const game = await Game.findOne({ gameId });
   if (!game || game.currentPot <= 0 || game.activePlayers.length === 0) return;
 
-  const gamePotKeypair = Keypair.fromSecretKey(Uint8Array.from(game.gamePotSecretKey));
+  const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey)); // Changed to decode string
   const totalPot = game.currentPot;
   const serviceFeePercentage = game.taxPercentage || 10;
   const fee = totalPot * (serviceFeePercentage / 100);
   const winnings = totalPot - fee;
 
-  const serviceWallet = new PublicKey('HbyQrE2N1V8TPs5HJ9wGDq3M85Zm1i21RmgbLFk39xkS');
+  const serviceWallet = new PublicKey(developerWallet);
   const scores = await Score.find({ gameId, cycleEnd: null });
   if (scores.length === 0) return;
 
@@ -176,7 +173,6 @@ export async function getGamePotAmount(gameId: string): Promise<number> {
   return game ? game.currentPot : 0;
 }
 
-// src/lib/solana.ts
 export async function updateScore(gameId: string, userId: string, score: number, fetchOnly: boolean = false): Promise<any> {
   await connectDB();
   const Score = (await import('../models/Score')).default;
@@ -209,14 +205,12 @@ export async function cleanDuplicatePlayers(gameId: string): Promise<void> {
     const game = await Game.findOne({ gameId });
     if (!game) throw new Error(`Game ${gameId} not found`);
 
-    // Deduplicate activePlayers by userId
     const uniquePlayersMap = new Map<string, { userId: string }>();
     game.activePlayers.forEach((player: { userId: string }) => {
       uniquePlayersMap.set(player.userId, { userId: player.userId });
     });
     const uniquePlayers = Array.from(uniquePlayersMap.values());
 
-    // Update the game with deduplicated players and correct playerCount
     const result = await Game.updateOne(
       { gameId },
       {
@@ -230,6 +224,74 @@ export async function cleanDuplicatePlayers(gameId: string): Promise<void> {
     console.log(`Cleaned duplicates for game ${gameId}. Modified: ${result.modifiedCount}`);
   } catch (error: any) {
     console.error(`Error cleaning duplicates for game ${gameId}:`, error);
+    throw error;
+  }
+}
+
+export async function sendPotToDeveloper(gameId: string): Promise<void> {
+  await connectDB();
+  const Game = (await import('../models/Game')).default;
+
+  try {
+    // Fetch the game
+    const game = await Game.findOne({ gameId });
+    if (!game) throw new Error(`Game ${gameId} not found`);
+    if (game.currentPot <= 0) throw new Error(`Game ${gameId} has no funds in the pot`);
+
+    // Reconstruct the game pot keypair from the stored secret key (now a string)
+    const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey)); // Changed to decode string
+
+    // Verify the public key matches (for safety)
+    if (gamePotKeypair.publicKey.toBase58() !== game.gamePotPublicKey) {
+      throw new Error(`Public key mismatch for game ${gameId}`);
+    }
+
+    // Get the actual balance of the game pot wallet
+    const balance = await connection.getBalance(gamePotKeypair.publicKey);
+    if (balance <= 0) throw new Error(`Game pot wallet has no funds`);
+
+    // Estimate the transaction fee (assume 5000 lamports for a simple transfer)
+    const FEE_ESTIMATE = 5000; // Adjust based on actual fee if needed
+    const transferableAmount = Math.max(0, balance - FEE_ESTIMATE);
+
+    if (transferableAmount <= 0) {
+      throw new Error(`Insufficient funds after accounting for fees: ${balance} lamports available`);
+    }
+
+    // Get the latest blockhash
+    const { blockhash } = await connection.getLatestBlockhash();
+
+    // Create a transaction to transfer the available amount to the developer wallet
+    const developerPubkey = new PublicKey(developerWallet);
+    const transferTx = new solanaWeb3.Transaction().add(
+      solanaWeb3.SystemProgram.transfer({
+        fromPubkey: gamePotKeypair.publicKey,
+        toPubkey: developerPubkey,
+        lamports: transferableAmount, // Transfer only what’s available minus fee
+      })
+    );
+
+    // Set the blockhash and fee payer
+    transferTx.recentBlockhash = blockhash;
+    transferTx.feePayer = gamePotKeypair.publicKey;
+
+    // Sign and send the transaction
+    const signature = await solanaWeb3.sendAndConfirmTransaction(
+      connection,
+      transferTx,
+      [gamePotKeypair]
+    );
+    console.log(`Transferred ${transferableAmount} lamports from game ${gameId} to developer wallet. Signature: ${signature}`);
+
+    // Update the game to reflect the pot being emptied
+    await Game.updateOne(
+      { gameId },
+      { $set: { currentPot: 0 } }
+    );
+
+    console.log(`Game ${gameId} pot reset to 0 after transfer`);
+  } catch (error: any) {
+    console.error(`Error sending pot to developer for game ${gameId}:`, error);
     throw error;
   }
 }
