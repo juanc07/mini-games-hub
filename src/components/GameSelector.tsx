@@ -5,11 +5,21 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useWallet } from '../lib/WalletContext';
 import * as solanaWeb3 from '@solana/web3.js';
+import { Toaster, toast } from 'sonner';
 
 interface Game {
   gameId: string;
   gameName: string;
   taxPercentage: number;
+  cycleEndTime: string;
+}
+
+interface GameStatus {
+  gameId: string;
+  gameName: string;
+  timeLeft: number;
+  cycleActive: boolean;
+  currentPot: number; // Add currentPot to GameStatus
 }
 
 interface GameSelectorProps {
@@ -20,13 +30,14 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
   const { wallet, walletConnected } = useWallet();
   const router = useRouter();
   const [games, setGames] = useState<Game[]>([]);
+  const [gameStatuses, setGameStatuses] = useState<Map<string, GameStatus>>(new Map());
   const [loading, setLoading] = useState<boolean>(true);
   const [betAmount, setBetAmount] = useState<number>(0.001);
   const [bettingGameId, setBettingGameId] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchGames = async () => {
+    const fetchGamesAndStatuses = async () => {
       try {
         const res = await fetch('/api/game-registry', {
           method: 'GET',
@@ -35,30 +46,69 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
         if (!res.ok) throw new Error('Failed to fetch games');
         const data: Game[] = await res.json();
         setGames(data);
+
+        const statusRes = await fetch('/api/game-status');
+        if (!statusRes.ok) throw new Error('Failed to fetch game statuses');
+        const statuses: GameStatus[] = await statusRes.json();
+        const statusMap = new Map<string, GameStatus>();
+        statuses.forEach(status => statusMap.set(status.gameId, { ...status }));
+        setGameStatuses(statusMap);
       } catch (error) {
-        console.error('Error fetching games:', error);
+        console.error('Error fetching games or statuses:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchGames();
+    fetchGamesAndStatuses();
+    const fetchInterval = setInterval(fetchGamesAndStatuses, 10 * 1000); // Sync every 10 seconds
+
+    const countdownInterval = setInterval(() => {
+      setGameStatuses(prev => {
+        const updated = new Map(prev);
+        updated.forEach(status => {
+          if (status.timeLeft > 0) {
+            status.timeLeft = Math.max(0, status.timeLeft - 1);
+          }
+        });
+        return updated;
+      });
+    }, 1000); // Update every second
+
+    return () => {
+      clearInterval(fetchInterval);
+      clearInterval(countdownInterval);
+    };
   }, []);
 
   const handlePlaceBet = async (game: Game) => {
     if (!wallet || !walletConnected) {
-      alert('Please connect your wallet');
+      toast.error('Please connect your wallet to place a bet.', {
+        description: 'Connect via the wallet button in the header.',
+      });
       return;
     }
 
     if (serverStatus === false) {
-      alert('Cannot place bet: Server is currently offline');
+      toast.error('Cannot place bet: Server is currently offline.', {
+        description: 'Please try again when the server is back online.',
+      });
       return;
     }
 
     const solana = window.solana;
     if (!solana || !solana.isPhantom) {
-      alert('Please install Phantom Wallet!');
+      toast.error('Please install Phantom Wallet to proceed.', {
+        description: 'Download it from phantom.app.',
+      });
+      return;
+    }
+
+    const gameStatus = gameStatuses.get(game.gameId);
+    if (!gameStatus || gameStatus.timeLeft < 300) {
+      toast.error('Cannot place bet: Less than 5 minutes remaining in this cycle.', {
+        description: 'Wait for the next cycle to start.',
+      });
       return;
     }
 
@@ -98,9 +148,14 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
       }
 
       router.push(`/${game.gameName.replace(' ', '-')}/?betPlaced=true`);
+      toast.success(`Successfully placed bet of ${betAmount} SOL on ${game.gameName}.`, {
+        description: 'Good luck!',
+      });
     } catch (error: any) {
       console.error('Error placing bet:', error);
-      alert('Failed to place bet: ' + (error.message || 'Unknown error'));
+      toast.error(`Failed to place bet: ${error.message || 'Unknown error'}`, {
+        description: 'Please try again or check the console for details.',
+      });
     } finally {
       setBettingGameId(null);
       setSelectedGame(null);
@@ -114,6 +169,12 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
 
   const toggleGameOptions = (gameId: string) => {
     setSelectedGame(selectedGame === gameId ? null : gameId);
+  };
+
+  const formatTimeLeft = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
   };
 
   if (loading) {
@@ -145,38 +206,50 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
         <p className="text-white text-center text-xl">No games available</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-          {games.map((game) => (
-            <div key={game.gameId} className="relative">
-              <Button
-                onClick={() => toggleGameOptions(game.gameId)}
-                className="w-full h-56 bg-[#00ff00] text-black hover:bg-[#00cc00] hover:shadow-[0_0_20px_#00ff00,0_0_40px_#00ff00] transition-all duration-300 transform hover:scale-105 border-4 border-[#00ff00] text-2xl font-bold uppercase"
-                disabled={bettingGameId === game.gameId}
-              >
-                {bettingGameId === game.gameId
-                  ? 'Placing Bet...'
-                  : game.gameName.replace('-', ' ')}
-              </Button>
-              {selectedGame === game.gameId && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border-2 border-[#00ff00] rounded-lg p-2 z-10 shadow-lg">
-                  <Button
-                    onClick={() => handlePlayWithoutBet(game)}
-                    className="w-full mb-2 bg-gray-500 text-white hover:bg-gray-600 text-lg py-2"
-                  >
-                    Play Without Bet
-                  </Button>
-                  <Button
-                    onClick={() => handlePlaceBet(game)}
-                    className="w-full bg-[#00ff00] text-black hover:bg-[#00cc00] disabled:opacity-50 text-lg py-2"
-                    disabled={serverStatus === false || bettingGameId === game.gameId}
-                  >
-                    {serverStatus === false ? 'Server Offline' : 'Place Bet'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
+          {games.map((game) => {
+            const status = gameStatuses.get(game.gameId);
+            const timeLeft = status ? formatTimeLeft(status.timeLeft) : 'Loading...';
+            const currentPot = status ? status.currentPot / solanaWeb3.LAMPORTS_PER_SOL : 0; // Convert to SOL
+            const canBet = status && status.timeLeft >= 300 && status.cycleActive;
+
+            return (
+              <div key={game.gameId} className="relative">
+                <Button
+                  onClick={() => toggleGameOptions(game.gameId)}
+                  className="w-full h-56 bg-[#00ff00] text-black hover:bg-[#00cc00] hover:shadow-[0_0_20px_#00ff00,0_0_40px_#00ff00] transition-all duration-300 transform hover:scale-105 border-4 border-[#00ff00] text-2xl font-bold uppercase flex flex-col justify-center items-center"
+                  disabled={bettingGameId === game.gameId}
+                >
+                  <span>{bettingGameId === game.gameId ? 'Placing Bet...' : game.gameName.replace('-', ' ')}</span>
+                  <span className="text-sm mt-2">Time Left: {timeLeft}</span>
+                  <span className="text-sm mt-2">Pot: {currentPot.toFixed(3)} SOL</span>
+                </Button>
+                {selectedGame === game.gameId && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border-2 border-[#00ff00] rounded-lg p-2 z-10 shadow-lg">
+                    <Button
+                      onClick={() => handlePlayWithoutBet(game)}
+                      className="w-full mb-2 bg-gray-500 text-white hover:bg-gray-600 text-lg py-2"
+                    >
+                      Play Without Bet
+                    </Button>
+                    <Button
+                      onClick={() => handlePlaceBet(game)}
+                      className="w-full bg-[#00ff00] text-black hover:bg-[#00cc00] disabled:opacity-50 text-lg py-2"
+                      disabled={serverStatus === false || bettingGameId === game.gameId || !canBet}
+                    >
+                      {serverStatus === false
+                        ? 'Server Offline'
+                        : !canBet
+                        ? 'Cycle Ending Soon'
+                        : 'Place Bet'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+      <Toaster />
     </div>
   );
 };

@@ -1,4 +1,3 @@
-// app/api/place-bet-confirm/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { confirmBet } from '../../../lib/solana';
 

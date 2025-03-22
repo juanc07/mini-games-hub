@@ -1,17 +1,37 @@
-// src/components/Leaderboard.tsx
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlayerBet } from '../lib/solana';
 
 interface LeaderboardProps {
   players: PlayerBet[];
-  pot: number;
-  timeLeft: number;
+  pot: number; // In lamports
+  timeLeft: number; // Initial time left in seconds
+  gameId: string; // To fetch specific game data
 }
 
-const Leaderboard: React.FC<LeaderboardProps> = ({ players, pot, timeLeft }) => {
-  const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+const Leaderboard: React.FC<LeaderboardProps> = ({ players, pot: initialPot, timeLeft: initialTimeLeft, gameId }) => {
+  const [sortedPlayers, setSortedPlayers] = useState<PlayerBet[]>([]);
+  const [currentPot, setCurrentPot] = useState(initialPot);
+  const [timeLeft, setTimeLeft] = useState(initialTimeLeft);
+
+  useEffect(() => {
+    setSortedPlayers([...players].sort((a, b) => b.score - a.score));
+  }, [players]);
+
+  useEffect(() => {
+    console.log(`[Leaderboard] initialPot updated to: ${initialPot} lamports (${initialPot / 1e9} SOL)`);
+    setCurrentPot(initialPot);
+    setTimeLeft(initialTimeLeft);
+  }, [initialPot, initialTimeLeft]);
+
+  useEffect(() => {
+    console.log(`[Leaderboard] currentPot set to: ${currentPot} lamports (${currentPot / 1e9} SOL)`);
+    const countdownInterval = setInterval(() => {
+      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(countdownInterval);
+  }, [currentPot]); // Add currentPot as dependency to log changes
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -25,13 +45,12 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ players, pot, timeLeft }) => 
         Leaderboard
       </h2>
       <div className="text-lg mb-4">
-        <p>Pot: {(pot / 1e9).toFixed(2)} SOL</p>
-        <p>Time Left: {formatTime(timeLeft)}</p>
+        <p>Pot: {(currentPot / 1e9).toFixed(3)} SOL</p> {/* Increased precision for clarity */}
       </div>
       <ul className="space-y-2">
         {sortedPlayers.slice(0, 5).map((player, index) => (
           <li
-            key={`${player.player.toBase58()}-${index}`} // Unique key with index fallback
+            key={`${player.player.toBase58()}-${index}`}
             className="flex justify-between items-center text-sm bg-[#333] p-2 rounded-md hover:bg-[#444] transition-colors"
           >
             <span>
