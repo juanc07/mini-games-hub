@@ -140,7 +140,7 @@ export async function distributeWinnings(gameId: string): Promise<void> {
   const excessFunds = Math.max(0, actualBalance - totalPotInDb - rentExemptMinimum);
   console.log(`Excess funds detected: ${excessFunds} lamports (retained for transaction fees)`);
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const { blockhash} = await connection.getLatestBlockhash();
   const totalTxFeesEstimate = 10000; // Reserve for feeTx + winningsTx
   const totalPot = Math.max(0, totalPotInDb - totalTxFeesEstimate);
   const fee = totalPot * (serviceFeePercentage / 100);
@@ -157,6 +157,7 @@ export async function distributeWinnings(gameId: string): Promise<void> {
 
   const winner = scores.reduce((prev, curr) => (curr.score > prev.score ? curr : prev));
   const winnerPubkey = new PublicKey(winner.userId);
+  console.log(`Winner determined for ${gameId}: ${winnerPubkey.toBase58()}`); // Log winner wallet
 
   try {
     const feeTx = new solanaWeb3.Transaction().add(
@@ -229,7 +230,7 @@ export async function distributeWinnings(gameId: string): Promise<void> {
       commitment: 'confirmed',
       maxRetries: 5,
     });
-    console.log(`Winnings transferred for ${gameId}. Signature: ${winningsSignature}`);
+    console.log(`Winnings transferred for ${gameId} to wallet ${winnerPubkey.toBase58()}. Signature: ${winningsSignature}`); // Updated log with winner wallet
 
     const finalBalance = await connection.getBalance(gamePotKeypair.publicKey);
     console.log(`Final balance for ${gameId}: ${finalBalance} lamports`);
@@ -265,8 +266,6 @@ export async function distributeWinnings(gameId: string): Promise<void> {
   }
 }
 
-//
-
 export async function getGamePotAmount(gameId: string): Promise<number> {
   await connectDB();
   const Game = (await import('../models/Game')).default;
@@ -285,7 +284,6 @@ export async function updateScore(
 
   if (fetchOnly) {
     const scores = await Score.find({ gameId, cycleEnd: null }).lean() as unknown as PlainScore[];
-    // Optional runtime check (remove in production if confident)
     if (scores.length > 0 && (!scores[0].gameId || !scores[0].userId || typeof scores[0].score !== 'number')) {
       console.error('Fetched scores do not match PlainScore:', scores[0]);
     }
