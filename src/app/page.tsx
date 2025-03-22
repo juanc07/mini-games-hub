@@ -21,6 +21,7 @@ export default function Home() {
         const data = await response.json();
         setServerStatus(response.ok && data.status === 'ok');
       } catch (error) {
+        console.log("error: ", error);
         setServerStatus(false);
       }
     };

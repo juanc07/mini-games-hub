@@ -16,7 +16,7 @@ if (!developerWalletRaw) {
 let developerWallet: PublicKey;
 try {
   developerWallet = new PublicKey(developerWalletRaw);
-} catch (error) {
+} catch {
   throw new Error(`Invalid TAX_COLLECTION_WALLET public key: ${developerWalletRaw}`);
 }
 
@@ -24,6 +24,14 @@ export interface PlayerBet {
   player: PublicKey;
   amount: number;
   score: number;
+}
+
+// Define a plain version of ScoreSchema without Document
+export interface PlainScore {
+  gameId: string;
+  userId: string;
+  score: number;
+  cycleEnd: Date | null;
 }
 
 export async function createBetTransaction(
@@ -61,7 +69,7 @@ export async function createBetTransaction(
     transaction.feePayer = new PublicKey(publicKey);
 
     return transaction.serialize({ requireAllSignatures: false }).toString('base64');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in createBetTransaction:', error);
     throw error;
   }
@@ -117,68 +125,147 @@ export async function distributeWinnings(gameId: string): Promise<void> {
   if (!game || game.currentPot <= 0 || game.activePlayers.length === 0) return;
 
   const gamePotKeypair = Keypair.fromSecretKey(bs58.decode(game.gamePotSecretKey));
-  const totalPot = game.currentPot;
+  const totalPotInDb = game.currentPot; // Source of truth
   const serviceFeePercentage = game.taxPercentage || 10;
-  const fee = totalPot * (serviceFeePercentage / 100);
-  const winnings = totalPot - fee;
 
-  const serviceWallet = developerWallet; // Now a PublicKey
+  let actualBalance = await connection.getBalance(gamePotKeypair.publicKey);
+  const rentExemptMinimum = await connection.getMinimumBalanceForRentExemption(0);
+  console.log(`Initial balance for ${gameId}: ${actualBalance} lamports (DB: ${totalPotInDb}), Rent-exempt minimum: ${rentExemptMinimum}`);
+
+  if (actualBalance <= rentExemptMinimum) {
+    console.error(`Balance too low to distribute in ${gameId}. Available: ${actualBalance}, Required: ${rentExemptMinimum}`);
+    return;
+  }
+
+  const excessFunds = Math.max(0, actualBalance - totalPotInDb - rentExemptMinimum);
+  console.log(`Excess funds detected: ${excessFunds} lamports (retained for transaction fees)`);
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const totalTxFeesEstimate = 10000; // Reserve for feeTx + winningsTx
+  const totalPot = Math.max(0, totalPotInDb - totalTxFeesEstimate);
+  const fee = totalPot * (serviceFeePercentage / 100);
+
+  console.log(`Total pot (DB): ${totalPot}, Fee: ${fee}`);
+
+  if (fee <= 0) {
+    console.error(`Calculated fee (${fee}) too low for ${gameId}`);
+    return;
+  }
+
   const scores = await Score.find({ gameId, cycleEnd: null });
   if (scores.length === 0) return;
 
   const winner = scores.reduce((prev, curr) => (curr.score > prev.score ? curr : prev));
   const winnerPubkey = new PublicKey(winner.userId);
 
-  const feeTx = new solanaWeb3.Transaction().add(
-    solanaWeb3.SystemProgram.transfer({
-      fromPubkey: gamePotKeypair.publicKey,
-      toPubkey: serviceWallet,
-      lamports: Math.floor(fee),
-    })
-  );
-  const winningsTx = new solanaWeb3.Transaction().add(
-    solanaWeb3.SystemProgram.transfer({
-      fromPubkey: gamePotKeypair.publicKey,
-      toPubkey: winnerPubkey,
-      lamports: Math.floor(winnings),
-    })
-  );
+  try {
+    const feeTx = new solanaWeb3.Transaction().add(
+      solanaWeb3.SystemProgram.transfer({
+        fromPubkey: gamePotKeypair.publicKey,
+        toPubkey: developerWallet,
+        lamports: Math.floor(fee),
+      })
+    );
+    feeTx.recentBlockhash = blockhash;
+    feeTx.feePayer = gamePotKeypair.publicKey;
 
-  const { blockhash } = await connection.getLatestBlockhash();
-  feeTx.recentBlockhash = blockhash;
-  feeTx.feePayer = gamePotKeypair.publicKey;
-  winningsTx.recentBlockhash = blockhash;
-  winningsTx.feePayer = gamePotKeypair.publicKey;
+    const feeResponse = await connection.getFeeForMessage(feeTx.compileMessage(), 'confirmed');
+    const feeTxFee = feeResponse?.value ?? 5000;
+    console.log(`Fee transaction fee: ${feeTxFee} lamports`);
 
-  await solanaWeb3.sendAndConfirmTransaction(connection, feeTx, [gamePotKeypair]);
-  await solanaWeb3.sendAndConfirmTransaction(connection, winningsTx, [gamePotKeypair]);
-
-  const currentDate = new Date();
-
-  await Score.updateMany(
-    { gameId, cycleEnd: null },
-    { $set: { cycleEnd: currentDate } }
-  );
-
-  await Game.updateOne(
-    { gameId },
-    {
-      $set: { currentPot: 0, activePlayers: [], lastDistribution: currentDate },
-      $inc: { totalTaxCollected: fee },
+    if (actualBalance < fee + feeTxFee + rentExemptMinimum) {
+      console.error(`Insufficient balance for fee transfer in ${gameId}. Available: ${actualBalance}, Needed: ${fee + feeTxFee + rentExemptMinimum}`);
+      return;
     }
-  );
-  await Player.updateOne(
-    { userId: winner.userId },
-    { $inc: { totalWinnings: winnings } }
-  );
-  await Distribution.create({
-    gameId,
-    winnerUserId: winner.userId,
-    totalPot,
-    tax: fee,
-    winnings,
-  });
+
+    const feeSignature = await solanaWeb3.sendAndConfirmTransaction(connection, feeTx, [gamePotKeypair], {
+      commitment: 'confirmed',
+      maxRetries: 5,
+    });
+    console.log(`Fee transferred for ${gameId}. Signature: ${feeSignature}`);
+
+    actualBalance = await connection.getBalance(gamePotKeypair.publicKey);
+    console.log(`Balance after fee transfer for ${gameId}: ${actualBalance} lamports`);
+
+    const placeholderWinningsTx = new solanaWeb3.Transaction().add(
+      solanaWeb3.SystemProgram.transfer({
+        fromPubkey: gamePotKeypair.publicKey,
+        toPubkey: winnerPubkey,
+        lamports: 1,
+      })
+    );
+    placeholderWinningsTx.recentBlockhash = blockhash;
+    placeholderWinningsTx.feePayer = gamePotKeypair.publicKey;
+
+    const winningsResponse = await connection.getFeeForMessage(placeholderWinningsTx.compileMessage(), 'confirmed');
+    const winningsTxFee = winningsResponse?.value ?? 5000;
+    console.log(`Winnings transaction fee: ${winningsTxFee} lamports`);
+
+    const winnings = Math.max(0, totalPot - fee);
+    console.log(`Calculated winnings: ${winnings} lamports`);
+
+    if (actualBalance < winnings + winningsTxFee + rentExemptMinimum) {
+      console.error(`Insufficient on-chain balance for winnings in ${gameId}. Available: ${actualBalance}, Needed: ${winnings + winningsTxFee + rentExemptMinimum}`);
+      return;
+    }
+
+    const winningsTx = new solanaWeb3.Transaction().add(
+      solanaWeb3.SystemProgram.transfer({
+        fromPubkey: gamePotKeypair.publicKey,
+        toPubkey: winnerPubkey,
+        lamports: Math.floor(winnings),
+      })
+    );
+    winningsTx.recentBlockhash = blockhash;
+    winningsTx.feePayer = gamePotKeypair.publicKey;
+
+    const simulation = await connection.simulateTransaction(winningsTx);
+    if (simulation.value.err) {
+      console.error(`Winnings transaction simulation failed for ${gameId}:`, simulation.value.err, simulation.value.logs);
+      throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
+    }
+
+    const winningsSignature = await solanaWeb3.sendAndConfirmTransaction(connection, winningsTx, [gamePotKeypair], {
+      commitment: 'confirmed',
+      maxRetries: 5,
+    });
+    console.log(`Winnings transferred for ${gameId}. Signature: ${winningsSignature}`);
+
+    const finalBalance = await connection.getBalance(gamePotKeypair.publicKey);
+    console.log(`Final balance for ${gameId}: ${finalBalance} lamports`);
+
+    const currentDate = new Date();
+
+    await Score.updateMany(
+      { gameId, cycleEnd: null },
+      { $set: { cycleEnd: currentDate } }
+    );
+
+    await Game.updateOne(
+      { gameId },
+      {
+        $set: { currentPot: 0, activePlayers: [], lastDistribution: currentDate },
+        $inc: { totalTaxCollected: fee },
+      }
+    );
+    await Player.updateOne(
+      { userId: winner.userId },
+      { $inc: { totalWinnings: winnings } }
+    );
+    await Distribution.create({
+      gameId,
+      winnerUserId: winner.userId,
+      totalPot,
+      tax: fee,
+      winnings,
+    });
+  } catch (error) {
+    console.error(`Transaction failed for ${gameId}:`, error);
+    throw error;
+  }
 }
+
+//
 
 export async function getGamePotAmount(gameId: string): Promise<number> {
   await connectDB();
@@ -187,12 +274,21 @@ export async function getGamePotAmount(gameId: string): Promise<number> {
   return game ? game.currentPot : 0;
 }
 
-export async function updateScore(gameId: string, userId: string, score: number, fetchOnly: boolean = false): Promise<any> {
+export async function updateScore(
+  gameId: string,
+  userId: string,
+  score: number,
+  fetchOnly: boolean = false
+): Promise<PlainScore[] | { success: boolean; updated: boolean; previousScore: number; newScore: number }> {
   await connectDB();
   const Score = (await import('../models/Score')).default;
 
   if (fetchOnly) {
-    const scores = await Score.find({ gameId, cycleEnd: null }).lean();
+    const scores = await Score.find({ gameId, cycleEnd: null }).lean() as unknown as PlainScore[];
+    // Optional runtime check (remove in production if confident)
+    if (scores.length > 0 && (!scores[0].gameId || !scores[0].userId || typeof scores[0].score !== 'number')) {
+      console.error('Fetched scores do not match PlainScore:', scores[0]);
+    }
     return scores;
   }
 
@@ -236,7 +332,7 @@ export async function cleanDuplicatePlayers(gameId: string): Promise<void> {
     );
 
     console.log(`Cleaned duplicates for game ${gameId}. Modified: ${result.modifiedCount}`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error cleaning duplicates for game ${gameId}:`, error);
     throw error;
   }
@@ -266,7 +362,7 @@ export async function sendPotToDeveloper(gameId: string): Promise<void> {
       throw new Error(`Insufficient funds after accounting for fees: ${balance} lamports available`);
     }
 
-    const developerPubkey = developerWallet; // Now a PublicKey
+    const developerPubkey = developerWallet;
     const { blockhash } = await connection.getLatestBlockhash();
 
     const transferTx = new solanaWeb3.Transaction().add(
@@ -293,7 +389,7 @@ export async function sendPotToDeveloper(gameId: string): Promise<void> {
     );
 
     console.log(`Game ${gameId} pot reset to 0 after transfer`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error sending pot to developer for game ${gameId}:`, error);
     throw error;
   }

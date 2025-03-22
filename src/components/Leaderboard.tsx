@@ -15,23 +15,50 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ players, pot: initialPot, tim
   const [currentPot, setCurrentPot] = useState(initialPot);
   const [timeLeft, setTimeLeft] = useState(initialTimeLeft);
 
+  // Sort players by score
   useEffect(() => {
     setSortedPlayers([...players].sort((a, b) => b.score - a.score));
   }, [players]);
 
+  // Sync initial props
   useEffect(() => {
     console.log(`[Leaderboard] initialPot updated to: ${initialPot} lamports (${initialPot / 1e9} SOL)`);
     setCurrentPot(initialPot);
     setTimeLeft(initialTimeLeft);
   }, [initialPot, initialTimeLeft]);
 
+  // Fetch game data using gameId
   useEffect(() => {
-    console.log(`[Leaderboard] currentPot set to: ${currentPot} lamports (${currentPot / 1e9} SOL)`);
+    const fetchGameData = async () => {
+      try {
+        const response = await fetch(`/api/game-status?gameId=${gameId}`);
+        if (!response.ok) throw new Error('Failed to fetch game status');
+        const { currentPot: potLamports, cycleEndTime } = await response.json();
+        setCurrentPot(potLamports);
+
+        // Calculate time left from cycleEndTime
+        const endTime = new Date(cycleEndTime).getTime();
+        const now = Date.now();
+        const secondsLeft = Math.max(0, Math.floor((endTime - now) / 1000));
+        setTimeLeft(secondsLeft);
+      } catch (error) {
+        console.error(`Error fetching game data for ${gameId}:`, error);
+      }
+    };
+
+    fetchGameData(); // Initial fetch
+    const fetchInterval = setInterval(fetchGameData, 30000); // Fetch every 30 seconds
+
+    // Countdown timer
     const countdownInterval = setInterval(() => {
       setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-    return () => clearInterval(countdownInterval);
-  }, [currentPot]); // Add currentPot as dependency to log changes
+
+    return () => {
+      clearInterval(fetchInterval);
+      clearInterval(countdownInterval);
+    };
+  }, [gameId, currentPot]); // Depend on gameId and currentPot
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -45,7 +72,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ players, pot: initialPot, tim
         Leaderboard
       </h2>
       <div className="text-lg mb-4">
-        <p>Pot: {(currentPot / 1e9).toFixed(3)} SOL</p> {/* Increased precision for clarity */}
+        <p>Pot: {(currentPot / 1e9).toFixed(3)} SOL</p>
+        <p>Time Left: {formatTime(timeLeft)}</p> {/* Display timeLeft */}
       </div>
       <ul className="space-y-2">
         {sortedPlayers.slice(0, 5).map((player, index) => (

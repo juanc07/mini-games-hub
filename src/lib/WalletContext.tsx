@@ -31,9 +31,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         setWallet(publicKey);
         setWalletConnected(true);
         setIsAdmin(publicKey.toBase58() === ADMIN_PUBLIC_KEY);
-      } catch (error: any) {
+      } catch (error: unknown) { // Changed from any to unknown
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('Wallet connection failed:', error);
-        alert(error.message === 'User rejected the request' ? 'Wallet connection rejected.' : 'Wallet connection error.');
+        alert(errorMessage === 'User rejected the request' ? 'Wallet connection rejected.' : 'Wallet connection error.');
       }
     } else {
       alert('Please install Phantom Wallet!');

@@ -23,8 +23,12 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
   useEffect(() => {
     if (!mountRef.current) return;
 
-    while (mountRef.current.firstChild) {
-      mountRef.current.removeChild(mountRef.current.firstChild);
+    // Capture the mount node at setup time
+    const mountNode = mountRef.current;
+
+    // Clear any existing children
+    while (mountNode.firstChild) {
+      mountNode.removeChild(mountNode.firstChild);
     }
 
     const scene = new THREE.Scene();
@@ -38,16 +42,16 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
 
     // Set initial size based on container
     const updateRendererSize = () => {
-      if (mountRef.current) {
-        const width = mountRef.current.clientWidth;
-        const height = mountRef.current.clientHeight;
+      if (mountNode) {
+        const width = mountNode.clientWidth;
+        const height = mountNode.clientHeight;
         renderer.setSize(width, height);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
       }
     };
 
-    mountRef.current.appendChild(renderer.domElement);
+    mountNode.appendChild(renderer.domElement);
     updateRendererSize(); // Initial sizing
 
     scene.background = new THREE.Color(0x000000);
@@ -166,8 +170,8 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
-      if (mountRef.current && renderer.domElement) {
-        mountRef.current.removeChild(renderer.domElement);
+      if (mountNode && renderer.domElement) { // Use captured mountNode
+        mountNode.removeChild(renderer.domElement);
       }
       renderer.dispose();
       scene.children.forEach(child => scene.remove(child));
@@ -182,4 +186,5 @@ const CubeRush: React.FC<CubeRushProps> = ({ onGameOver, onScoreUpdate }) => {
 
   return <div ref={mountRef} className="game-canvas" />;
 };
+
 export default CubeRush;

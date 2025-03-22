@@ -1,15 +1,13 @@
 import { distributeWinnings } from './solana';
 import connectDB from './mongodb';
-import GameModel from '../models/Game'; // Direct import of the Game model
+import GameModel from '../models/Game';
+
+let isProcessing = false; // Simple lock
 
 async function monitorGameCycles() {
-  // Ensure MongoDB is connected
   await connectDB();
-
-  // Explicitly reference the Game model to ensure it's registered
   const Game = GameModel;
 
-  // Verify Game model is defined
   if (!Game) {
     console.error('Game model is undefined. Check model registration in src/models/Game.ts');
     throw new Error('Game model not initialized');
@@ -18,6 +16,12 @@ async function monitorGameCycles() {
   console.log('Game cycle monitor started successfully');
 
   setInterval(async () => {
+    if (isProcessing) {
+      console.log('Skipping cycle check due to ongoing processing');
+      return;
+    }
+
+    isProcessing = true;
     try {
       const now = new Date();
       console.log('Checking for expired game cycles at:', now);
@@ -31,7 +35,6 @@ async function monitorGameCycles() {
         console.log(`Cycle ended for game ${game.gameId}. Distributing winnings...`);
         await distributeWinnings(game.gameId);
 
-        // Reset cycleEndTime to next 2 hours
         const newCycleEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000);
         await Game.updateOne(
           { gameId: game.gameId },
@@ -41,11 +44,12 @@ async function monitorGameCycles() {
       }
     } catch (error) {
       console.error('Error in game cycle monitor:', error);
+    } finally {
+      isProcessing = false;
     }
-  }, 60 * 1000); // Check every minute
+  }, 60 * 1000);
 }
 
-// Start the service with error handling
 monitorGameCycles().catch(error => {
   console.error('Failed to start game cycle monitor:', error);
 });

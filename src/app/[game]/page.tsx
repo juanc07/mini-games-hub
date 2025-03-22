@@ -35,7 +35,7 @@ export default function GamePage({ params }: GamePageProps) {
   const [players, setPlayers] = useState<PlayerBet[]>([]);
   const [pot, setPot] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [resetKey, setResetKey] = useState<number>(0);
+  const [resetKey, setResetKey] = useState<number>(0); // Keep it for resetting
   const [gameId, setGameId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasEnded, setHasEnded] = useState<boolean>(false);
@@ -72,32 +72,7 @@ export default function GamePage({ params }: GamePageProps) {
     fetchGameData();
   }, [gameName, wallet, router, betPlaced]);
 
-  useEffect(() => {
-    if (gameId && !gameOver && betPlaced) {
-      fetchGameStatus();
-      const fetchInterval = setInterval(fetchGameStatus, 10 * 1000);
-      const countdownInterval = setInterval(() => {
-        setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-
-      return () => {
-        clearInterval(fetchInterval);
-        clearInterval(countdownInterval);
-      };
-    }
-  }, [gameId, gameOver, betPlaced]);
-
-  useEffect(() => {
-    if (gameOver && hasEnded && !error) {
-      const timeout = setTimeout(() => {
-        console.log('Redirecting to home page after game over');
-        router.push('/');
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
-  }, [gameOver, hasEnded, router, error]);
-
-  const fetchGameStatus = async () => {
+  const fetchGameStatus = useCallback(async () => {
     if (!gameId || !betPlaced) return;
     try {
       const res = await fetch(`/api/game-status?gameId=${gameId}`);
@@ -141,7 +116,32 @@ export default function GamePage({ params }: GamePageProps) {
     } catch (error) {
       console.error('Failed to fetch game status:', error);
     }
-  };
+  }, [gameId, betPlaced]); // Dependencies for fetchGameStatus
+
+  useEffect(() => {
+    if (gameId && !gameOver && betPlaced) {
+      fetchGameStatus();
+      const fetchInterval = setInterval(fetchGameStatus, 10 * 1000);
+      const countdownInterval = setInterval(() => {
+        setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+
+      return () => {
+        clearInterval(fetchInterval);
+        clearInterval(countdownInterval);
+      };
+    }
+  }, [gameId, gameOver, betPlaced, fetchGameStatus]); // Added fetchGameStatus
+
+  useEffect(() => {
+    if (gameOver && hasEnded && !error) {
+      const timeout = setTimeout(() => {
+        console.log('Redirecting to home page after game over');
+        router.push('/');
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [gameOver, hasEnded, router, error]);
 
   const handleGameOver = useCallback(
     async (newScore: number) => {
@@ -152,6 +152,7 @@ export default function GamePage({ params }: GamePageProps) {
       setGameOver(true);
       setFinalScore(newScore);
       setScore(newScore);
+      setResetKey(prev => prev + 1); // Increment resetKey to reset CubeRush
 
       if (wallet && gameId && betPlaced) {
         try {
@@ -176,7 +177,7 @@ export default function GamePage({ params }: GamePageProps) {
         }
       }
     },
-    [wallet, gameId, betPlaced, hasEnded]
+    [wallet, gameId, betPlaced, hasEnded, fetchGameStatus] // Added fetchGameStatus
   );
 
   const handleScoreUpdate = useCallback(async (newScore: number) => {

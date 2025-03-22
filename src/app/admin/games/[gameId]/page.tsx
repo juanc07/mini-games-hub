@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { GameSchema } from "../../../../models/Game"; // Adjust path to your Game.ts file
 
 export default function EditGamePage() {
-  const [game, setGame] = useState<any>(null);
-  const [loading, setLoading] = useState(true); // Start with loading true
+  const [game, setGame] = useState<Partial<GameSchema> | null>(null);
+  const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function EditGamePage() {
         const data = await res.json();
         setGame(data);
       } catch (err) {
-        setError("Error loading game");
+        setError("Error loading game " + err);
       } finally {
         setLoading(false);
       }
@@ -42,7 +43,7 @@ export default function EditGamePage() {
           clearInterval(interval);
           resolve();
         }
-      }, 200); // ~2 seconds
+      }, 200);
     });
   };
 
@@ -99,7 +100,7 @@ export default function EditGamePage() {
         throw new Error(errorData.error || res.statusText);
       }
 
-      setGame((prev: any) => ({ ...prev, currentPot: 0 }));
+      setGame((prev) => (prev ? { ...prev, currentPot: 0 } : null));
     } catch (err) {
       console.error("Failed to send pot:", err);
       setError("Failed to send pot");
@@ -163,7 +164,7 @@ export default function EditGamePage() {
                   id="gameName"
                   name="gameName"
                   type="text"
-                  defaultValue={game.gameName}
+                  defaultValue={game?.gameName}
                   required
                   className="bg-[#333] text-white border-[#00ff00] focus:border-[#00cc00] focus:ring-[#00ff00]"
                 />
@@ -174,7 +175,7 @@ export default function EditGamePage() {
                   id="taxPercentage"
                   name="taxPercentage"
                   type="number"
-                  defaultValue={game.taxPercentage}
+                  defaultValue={game?.taxPercentage}
                   step="0.1"
                   required
                   className="bg-[#333] text-white border-[#00ff00] focus:border-[#00cc00] focus:ring-[#00ff00]"
@@ -182,7 +183,11 @@ export default function EditGamePage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-white">Current Pot</Label>
-                <p className="text-white">{(game.currentPot / 1e9).toFixed(3)} SOL</p>
+                {game?.currentPot !== undefined ? (
+                  <p className="text-white">{(game.currentPot / 1e9).toFixed(3)} SOL</p>
+                ) : (
+                  <p className="text-white">N/A</p>
+                )}
               </div>
               <div className="flex justify-between">
                 <Button

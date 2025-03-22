@@ -19,7 +19,7 @@ interface GameStatus {
   gameName: string;
   timeLeft: number;
   cycleActive: boolean;
-  currentPot: number; // Add currentPot to GameStatus
+  currentPot: number;
 }
 
 interface GameSelectorProps {
@@ -61,8 +61,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
     };
 
     fetchGamesAndStatuses();
-    const fetchInterval = setInterval(fetchGamesAndStatuses, 10 * 1000); // Sync every 10 seconds
-
+    const fetchInterval = setInterval(fetchGamesAndStatuses, 10 * 1000);
     const countdownInterval = setInterval(() => {
       setGameStatuses(prev => {
         const updated = new Map(prev);
@@ -73,7 +72,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
         });
         return updated;
       });
-    }, 1000); // Update every second
+    }, 1000);
 
     return () => {
       clearInterval(fetchInterval);
@@ -151,9 +150,10 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
       toast.success(`Successfully placed bet of ${betAmount} SOL on ${game.gameName}.`, {
         description: 'Good luck!',
       });
-    } catch (error: any) {
+    } catch (error: unknown) { // Changed from any to unknown
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error placing bet:', error);
-      toast.error(`Failed to place bet: ${error.message || 'Unknown error'}`, {
+      toast.error(`Failed to place bet: ${errorMessage}`, {
         description: 'Please try again or check the console for details.',
       });
     } finally {
@@ -209,7 +209,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({ serverStatus }) => {
           {games.map((game) => {
             const status = gameStatuses.get(game.gameId);
             const timeLeft = status ? formatTimeLeft(status.timeLeft) : 'Loading...';
-            const currentPot = status ? status.currentPot / solanaWeb3.LAMPORTS_PER_SOL : 0; // Convert to SOL
+            const currentPot = status ? status.currentPot / solanaWeb3.LAMPORTS_PER_SOL : 0;
             const canBet = status && status.timeLeft >= 300 && status.cycleActive;
 
             return (

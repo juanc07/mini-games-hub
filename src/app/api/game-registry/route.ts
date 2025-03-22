@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as solanaWeb3 from '@solana/web3.js';
 import connectDB from '../../../lib/mongodb';
 import bs58 from 'bs58';
+import { Model } from 'mongoose';
+import { GameSchema } from '../../../models/Game'; // Adjust path as needed
 
 // Import startServices to initialize the game cycle service
 import '../../_lib/startServices/route';
 
+type GameUpdateData = Partial<Pick<GameSchema, 'gameName' | 'taxPercentage' | 'gamePotPublicKey' | 'gamePotSecretKey' | 'cycleEndTime'>>;
+
 export async function GET(req: NextRequest) {
   await connectDB();
-  const Game = (await import('../../../models/Game')).default;
+  const Game = (await import('../../../models/Game')).default as Model<GameSchema>;
   const { searchParams } = new URL(req.url);
   const gameId = searchParams.get('gameId');
 
@@ -21,18 +25,19 @@ export async function GET(req: NextRequest) {
   }
 
   const games = await Game.find();
-  // Uncomment if you want to log secret keys (security note: avoid in production)
-  /*games.forEach((game) => {
-    console.log(`Game ${game.gameId} - Secret Key: ${game.gamePotSecretKey}`);
-  });*/
   console.log(`Fetched ${games.length} games from registry`);
   return NextResponse.json(games);
 }
 
 export async function POST(req: NextRequest) {
   await connectDB();
-  const Game = (await import('../../../models/Game')).default;
-  const { gameId, gameName, taxPercentage, cycleDuration } = await req.json();
+  const Game = (await import('../../../models/Game')).default as Model<GameSchema>;
+  const { gameId, gameName, taxPercentage, cycleDuration }: { 
+    gameId?: string; 
+    gameName?: string; 
+    taxPercentage?: number; 
+    cycleDuration?: number; 
+  } = await req.json();
 
   if (!gameId || !gameName) {
     return NextResponse.json({ error: 'gameId and gameName are required' }, { status: 400 });
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
     playerCount: 0,
     activePlayers: [],
     lastDistribution: new Date(),
-    cycleEndTime, // Use provided duration or default
+    cycleEndTime,
   });
 
   console.log(`Created game ${gameId} with cycle ending at ${cycleEndTime}`);
@@ -64,14 +69,21 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   await connectDB();
-  const Game = (await import('../../../models/Game')).default;
-  const { gameId, gameName, taxPercentage, gamePotPublicKey, gamePotSecretKey, cycleDuration } = await req.json();
+  const Game = (await import('../../../models/Game')).default as Model<GameSchema>;
+  const { gameId, gameName, taxPercentage, gamePotPublicKey, gamePotSecretKey, cycleDuration }: { 
+    gameId?: string; 
+    gameName?: string; 
+    taxPercentage?: number; 
+    gamePotPublicKey?: string; 
+    gamePotSecretKey?: string; 
+    cycleDuration?: number; 
+  } = await req.json();
 
   if (!gameId) {
     return NextResponse.json({ error: 'gameId is required' }, { status: 400 });
   }
 
-  const updateData: any = {};
+  const updateData: GameUpdateData = {};
   if (gameName) updateData.gameName = gameName;
   if (taxPercentage !== undefined) updateData.taxPercentage = taxPercentage;
   if (gamePotPublicKey) updateData.gamePotPublicKey = gamePotPublicKey;
@@ -94,8 +106,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   await connectDB();
-  const Game = (await import('../../../models/Game')).default;
-  const { gameId } = await req.json();
+  const Game = (await import('../../../models/Game')).default as Model<GameSchema>;
+  const { gameId }: { gameId?: string } = await req.json();
 
   if (!gameId) {
     return NextResponse.json({ error: 'gameId is required' }, { status: 400 });

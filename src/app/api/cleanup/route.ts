@@ -1,6 +1,8 @@
 // app/api/cleanup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanDuplicatePlayers } from '../../../lib/solana';
+import { Model } from 'mongoose';
+import { GameSchema } from '../../../models/Game'; // Adjust path as needed
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,11 +10,13 @@ export async function POST(req: NextRequest) {
     if (!gameId) return NextResponse.json({ error: 'gameId is required' }, { status: 400 });
 
     await cleanDuplicatePlayers(gameId);
-    const Game = (await import('../../../models/Game')).default;
+    const Game = (await import('../../../models/Game')).default as Model<GameSchema>;
     const updatedGame = await Game.findOne({ gameId });
     return NextResponse.json({ success: true, updatedGame });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Type guard to handle the error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error('Cleanup error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
